@@ -24,22 +24,27 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install pyinstaller
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --noconfirm --onedir --windowed --icon "app_icon.png" --name "VideoToolsSuite" --add-data "app_icon.png;." main.py
+        pyinstaller --noconfirm --onedir --windowed --name "VideoToolsSuite" --add-data "app_icon.png;." main.py
+
+    - name: Zip build folder
+      shell: pwsh
+      run: |
+        Compress-Archive -Path dist/VideoToolsSuite/* -DestinationPath dist/VideoToolsSuite-Windows.zip -Force
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
         name: VideoToolsSuite-Windows
-        path: dist/VideoToolsSuite
+        path: dist/VideoToolsSuite-Windows.zip
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          dist/VideoToolsSuite
+        files: dist/VideoToolsSuite-Windows.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
