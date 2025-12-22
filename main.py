@@ -21,7 +21,7 @@ from PyQt6.QtGui import QPixmap, QFont, QKeyEvent, QIcon
 import shutil
 import uuid
 
-DEFAULT_KEY_PATH = "/Users/rosilacerda/Desktop/kLM/aivideowear-85d19890ba52.json"
+DEFAULT_KEY_PATH = os.path.join(os.getcwd(), "aivideowear-85d19890ba52.json")
 API_ENDPOINT_TEMPLATE = "https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/{MODEL_ID}:predict"
 
 

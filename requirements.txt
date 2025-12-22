@@ -1,3 +1,5 @@
 PyQt6
 Pillow
 google-cloud-aiplatform
+requests
+pyinstaller
