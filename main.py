@@ -532,6 +532,11 @@ class VideoToolsApp(QMainWindow):
             QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; }
         """)
 
+        # Check FFmpeg
+        self.check_ffmpeg()
+        
+        # Data
+        self.project_data = {} 
         self.current_video_path = ""
         self.video_duration = 0.0
         self.image_widgets = []
@@ -1040,24 +1045,43 @@ class VideoToolsApp(QMainWindow):
         self.btn_extract.setEnabled(True)
         # self.save_state()
 
+    def check_ffmpeg(self):
+        try:
+            subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError:
+            QMessageBox.critical(self, "FFmpeg Missing", 
+                "FFmpeg is not found on this system.\n\n"
+                "Please install FFmpeg and add it to your PATH.\n"
+                "Without it, video processing and thumbnails will not work."
+            )
+
     def generate_thumbnail(self, video_path):
         temp_thumb = os.path.join(os.path.dirname(video_path), ".temp_thumb.jpg")
-        cmd = ["ffmpeg", "-ss", "00:00:01", "-i", video_path, "-vframes", "1", "-vf", "scale=160:-1", temp_thumb, "-y"]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if os.path.exists(temp_thumb):
-            pix = QPixmap(temp_thumb)
-            self.thumb_label.setPixmap(pix.scaled(80, 50, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
-            try: os.remove(temp_thumb)
-            except: pass
-        else:
-            self.thumb_label.setText("No Img")
+        try:
+            cmd = ["ffmpeg", "-ss", "00:00:01", "-i", video_path, "-vframes", "1", "-vf", "scale=160:-1", temp_thumb, "-y"]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if os.path.exists(temp_thumb):
+                pix = QPixmap(temp_thumb)
+                self.thumb_label.setPixmap(pix.scaled(80, 50, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
+                try: os.remove(temp_thumb)
+                except: pass
+            else:
+                self.thumb_label.setText("No Img")
+        except FileNotFoundError:
+            self.thumb_label.setText("No FFmpeg")
+        except Exception as e:
+            print(f"Thumb error: {e}")
 
     def get_video_duration(self, path):
         cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path]
         try:
             res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
             self.video_duration = float(res.stdout.strip())
-        except: pass
+        except FileNotFoundError:
+            self.video_duration = 0.0
+            QMessageBox.warning(self, "FFmpeg Error", "Could not get video duration (FFmpeg/FFprobe missing).")
+        except Exception: 
+            self.video_duration = 0.0
 
     def run_process(self):
         if not self.current_video_path: return
