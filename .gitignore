@@ -1,0 +1,27 @@
+# System
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+ENV/
+
+# Build Assets
+build/
+dist/
+*.spec
+
+# Credentials & Config
+aivideowear-*.json
+projects.json
+*.log
+
+# Temp
+.temp_thumb.jpg
+output/
+temp/
