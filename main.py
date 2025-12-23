@@ -539,23 +539,109 @@ class VideoToolsApp(QMainWindow):
         self.setWindowIcon(QIcon(resource_path("app_icon.png")))
         self.setGeometry(100, 100, 1200, 900)
         self.setStyleSheet("""
-            QMainWindow { background-color: #2b2b2b; color: white; }
-            QLabel { color: white; }
-            QTabWidget::pane { border: 1px solid #444; }
-            QTabBar::tab { background: #333; color: #fff; padding: 10px; }
-            QTabBar::tab:selected { background: #007AFF; }
-            QPushButton { 
-                background-color: #007AFF; 
-                color: white; 
-                border-radius: 5px; 
-                padding: 8px; 
+            QMainWindow, QDialog { background-color: #2b2b2b; color: #e0e0e0; }
+            QWidget { font-family: "Segoe UI", "Arial", sans-serif; font-size: 14px; }
+            
+            /* Labels */
+            QLabel { color: #e0e0e0; }
+            
+            /* Buttons */
+            QPushButton {
+                background-color: #3a3a3a;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 6px 12px;
+                color: white;
                 font-weight: bold;
             }
-            QPushButton:hover { background-color: #005BB5; }
-            QPushButton:disabled { background-color: #555; color: #888; }
-            QLineEdit, QTextEdit, QComboBox { padding: 5px; border-radius: 3px; border: 1px solid #555; background: #333; color: white; }
-            QGroupBox { border: 1px solid #555; border-radius: 5px; margin-top: 10px; padding-top: 10px; font-weight: bold; color: #ccc; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #666; }
+            QPushButton:pressed { background-color: #2a2a2a; border-color: #444; }
+            QPushButton:disabled { background-color: #2b2b2b; color: #666; border-color: #333; }
+
+            /* Primary Action Button (Blue) */
+            QPushButton[text*="Refresh"], QPushButton[text*="Upload"], QPushButton[text*="Render"] {
+                background-color: #007AFF; border: 1px solid #005BB5;
+            }
+            QPushButton[text*="Refresh"]:hover, QPushButton[text*="Upload"]:hover, QPushButton[text*="Render"]:hover {
+                background-color: #1a8bff;
+            }
+
+            /* Inputs */
+            QLineEdit, QTextEdit, QSpinBox, QComboBox {
+                background-color: #1e1e1e;
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 4px;
+                color: white;
+                selection-background-color: #007AFF;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView {
+                background-color: #1e1e1e;
+                color: white;
+                selection-background-color: #007AFF;
+            }
+
+            /* Table */
+            QTableWidget {
+                background-color: #1e1e1e;
+                gridline-color: #333;
+                border: 1px solid #444;
+                color: #f0f0f0;
+                alternate-background-color: #252525;
+            }
+            QTableWidget::item:selected { background-color: #007AFF; color: white; }
+            QHeaderView::section {
+                background-color: #333;
+                color: white;
+                padding: 6px;
+                border: 1px solid #222;
+                font-weight: bold;
+            }
+
+            /* Tabs */
+            QTabWidget::pane { border: 1px solid #444; }
+            QTabBar::tab {
+                background-color: #2b2b2b;
+                color: #aaa;
+                padding: 8px 16px;
+                border: 1px solid #444;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #3a3a3a;
+                color: white;
+                border-bottom: 2px solid #007AFF;
+            }
+            QTabBar::tab:hover { background-color: #333; color: white; }
+
+            /* Group Box */
+            QGroupBox {
+                border: 1px solid #444;
+                border-radius: 6px;
+                margin-top: 12px;
+                padding-top: 10px;
+                font-weight: bold;
+                color: #ccc;
+            }
             QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; }
+
+            /* Message Box */
+            QMessageBox { background-color: #2b2b2b; }
+            QMessageBox QLabel { color: #e0e0e0; }
+            QMessageBox QPushButton { min-width: 80px; }
+            
+            /* Scroll Bar */
+            QScrollBar:vertical {
+                border: none; background: #2b2b2b; width: 12px; margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #555; min-height: 20px; border-radius: 6px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
         """)
 
         # Check FFmpeg
@@ -879,15 +965,23 @@ class VideoToolsApp(QMainWindow):
         # 1. Get Frames from Extract Folder
         slides_dir = self.slides_dir
         if not slides_dir and self.current_video_path:
-             slides_dir = os.path.dirname(self.current_video_path)
+             # Ensure absolute normalized path for Windows
+             slides_dir = os.path.dirname(os.path.abspath(self.current_video_path))
 
         if not slides_dir or not os.path.exists(slides_dir):
-            QMessageBox.warning(self, "No Slides", "No slides found. Extract them first.")
+            QMessageBox.warning(self, "No Slides", f"Slides directory invalid or not found:\n{slides_dir}")
             return
-
-        files = sorted([f for f in os.listdir(slides_dir) if f.startswith("frame_") and f.endswith(".png")])
+        
+        # Normalize and list
+        slides_dir = os.path.normpath(slides_dir)
+        try:
+            files = sorted([f for f in os.listdir(slides_dir) if f.startswith("frame_") and f.endswith(".png")])
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to list frames:\n{e}")
+            return
+            
         if not files:
-             QMessageBox.warning(self, "No Frames", "No timestamped frames found in folder.")
+             QMessageBox.warning(self, "No Frames", f"No timestamped frames found in folder:\n{slides_dir}")
              return
 
         self.clip_table.setRowCount(len(files))
@@ -1072,13 +1166,20 @@ class VideoToolsApp(QMainWindow):
         # self.save_state()
 
     def check_ffmpeg(self):
+        # 1. Try bundled FFmpeg (Windows)
+        # Look for 'ffmpeg' folder in resource path
+        bundled_ffmpeg = resource_path(os.path.join("ffmpeg", "bin"))
+        if os.path.exists(bundled_ffmpeg):
+            os.environ["PATH"] += os.pathsep + bundled_ffmpeg
+            print(f"Added bundled FFmpeg to PATH: {bundled_ffmpeg}")
+
+        # 2. Verify availability
         try:
             subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
         except FileNotFoundError:
             QMessageBox.critical(self, "FFmpeg Missing", 
-                "FFmpeg is not found on this system.\n\n"
-                "Please install FFmpeg and add it to your PATH.\n"
-                "Without it, video processing and thumbnails will not work."
+                "FFmpeg is not found.\n\n"
+                "Please install FFmpeg or ensure the 'ffmpeg' folder is in the app directory."
             )
 
     def generate_thumbnail(self, video_path):

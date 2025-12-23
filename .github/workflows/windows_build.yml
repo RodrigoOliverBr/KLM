@@ -26,9 +26,18 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    - name: Download FFmpeg
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
+        Expand-Archive -Path "ffmpeg.zip" -DestinationPath "."
+        $ffmpegDir = Get-ChildItem -Directory | Where-Object { $_.Name -like "ffmpeg-*-essentials_build" }
+        Rename-Item -Path $ffmpegDir.FullName -NewName "ffmpeg"
+        Remove-Item "ffmpeg.zip"
+
     - name: Build with PyInstaller
       run: |
-        pyinstaller --noconfirm --onedir --windowed --name "VideoToolsSuite" --add-data "app_icon.png;." main.py
+        pyinstaller --noconfirm --onedir --windowed --name "VideoToolsSuite" --add-data "app_icon.png;." --add-data "ffmpeg;ffmpeg" main.py
 
     - name: Zip build folder
       shell: pwsh
