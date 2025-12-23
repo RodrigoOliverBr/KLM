@@ -224,7 +224,7 @@ class AssemblyWorker(QThread):
                         "-y", chunk_out
                     ]
                     
-                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
 
                 elif input_video:
                     # --- VIDEO SPEED ADJUST ---
@@ -261,7 +261,7 @@ class AssemblyWorker(QThread):
                         "-c:v", "libx264", "-c:a", "aac", 
                         "-y", chunk_out
                     ]
-                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
                 
                 if os.path.exists(chunk_out):
                     processed_clips.append(chunk_out)
@@ -269,9 +269,11 @@ class AssemblyWorker(QThread):
             # 2. Concat
             self.progress_signal.emit(total + 1, total + 2, "Concatenating...")
             concat_list_path = os.path.join(self.temp_dir, "list.txt")
-            with open(concat_list_path, "w") as f:
+            with open(concat_list_path, "w", encoding='utf-8') as f:
                 for p in processed_clips:
-                    f.write(f"file '{p}'\n")
+                    # Escape paths for FFmpeg concat file (forward slashes + quoting)
+                    p_safe = p.replace("\\", "/").replace("'", "'\\''") 
+                    f.write(f"file '{p_safe}'\n")
 
             temp_assembly = os.path.join(self.temp_dir, "temp_full.mp4")
             
@@ -280,7 +282,7 @@ class AssemblyWorker(QThread):
                 "-i", concat_list_path, 
                 "-c", "copy", "-y", temp_assembly
             ]
-            subprocess.run(cmd_concat, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd_concat, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
             
             # 3. Audio Mixing (Optional)
             final_target = self.output_path
@@ -298,7 +300,7 @@ class AssemblyWorker(QThread):
                     has_gen_audio = False
                     try:
                         probe_cmd = ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", temp_assembly]
-                        p_res = subprocess.run(probe_cmd, stdout=subprocess.PIPE, text=True)
+                        p_res = subprocess.run(probe_cmd, stdout=subprocess.PIPE, text=True, **get_subprocess_kwargs())
                         if p_res.stdout.strip(): has_gen_audio = True
                     except: pass
 
@@ -317,14 +319,11 @@ class AssemblyWorker(QThread):
                     else:
                         # No generated audio: Pass original audio through (100% vol)
                         # We just map video from 0 and audio from 1
-                        cmd_mix = [
-                            "ffmpeg", "-i", temp_assembly, "-i", original_vid,
-                            "-map", "0:v:0", "-map", "1:a:0",
                             "-c:v", "copy", "-c:a", "copy",
                             "-shortest", "-y", mix_temp
                         ]
 
-                    subprocess.run(cmd_mix, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(cmd_mix, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
                     
                     if os.path.exists(mix_temp):
                         final_mix_output = mix_temp
@@ -347,7 +346,7 @@ class AssemblyWorker(QThread):
                     "-c:a", "aac", "-b:a", "192k",
                     "-y", norm_temp
                 ]
-                subprocess.run(cmd_norm, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(cmd_norm, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
                 
                 if os.path.exists(norm_temp):
                     shutil.move(norm_temp, final_target)
@@ -1150,10 +1149,14 @@ class VideoToolsApp(QMainWindow):
             QMessageBox.critical(self, "Error", f"Assembly failed:\n{result}")
 
     def select_video(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select Video", "", "MP4 Files (*.mp4)")
-        if path:
-            self.set_current_video(path)
-            self.get_video_duration(path)
+        try:
+            path, _ = QFileDialog.getOpenFileName(self, "Select Video", "", "MP4 Files (*.mp4)")
+            if path:
+                self.set_current_video(path)
+                self.get_video_duration(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not select video:\n{e}")
+            print(f"Error selecting video: {e}")
     
     def select_logo(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select Logo", "", "Images (*.png *.jpg)")
