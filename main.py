@@ -975,13 +975,14 @@ class VideoToolsApp(QMainWindow):
         # Normalize and list
         slides_dir = os.path.normpath(slides_dir)
         try:
-            files = sorted([f for f in os.listdir(slides_dir) if f.startswith("frame_") and f.endswith(".png")])
+            # Flexible filter: accept frame_*.png OR slide_*.png
+            files = sorted([f for f in os.listdir(slides_dir) if (f.startswith("frame_") or f.startswith("slide_")) and f.lower().endswith(".png")])
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to list frames:\n{e}")
             return
             
         if not files:
-             QMessageBox.warning(self, "No Frames", f"No timestamped frames found in folder:\n{slides_dir}")
+             QMessageBox.warning(self, "No Frames", f"No frames found in folder:\n{slides_dir}\n\nExpected files starting with 'frame_' or 'slide_'.")
              return
 
         self.clip_table.setRowCount(len(files))
@@ -989,20 +990,23 @@ class VideoToolsApp(QMainWindow):
         # 2. Parse Timestamps
         t_stamps = []
         for f in files:
-            # frame_0001__01-23-456.png
+            # Try to parse: frame_0001__01-23-456.png
             try:
-                part = f.split("__")[1].split(".")[0] # 01-23-456
-                mins, secs, mills = map(int, part.split("-"))
-                total_sec = (mins * 60) + secs + (mills / 1000.0)
-                t_stamps.append(total_sec)
+                if "__" in f:
+                    part = f.split("__")[1].split(".")[0] # 01-23-456
+                    mins, secs, mills = map(int, part.split("-"))
+                    total_sec = (mins * 60) + secs + (mills / 1000.0)
+                    t_stamps.append(total_sec)
+                else:
+                    t_stamps.append(-1.0) # Marker: No timestamp in filename
             except:
-                t_stamps.append(0.0)
+                t_stamps.append(-1.0)
 
         # Load Saved Mapping for restoration
         saved_map = {}
 
         # 3. Fill Table
-        for i, f_name in enumerate(files):
+        for r, f_name in enumerate(files):
             # A. Thumbnail
             path = os.path.join(slides_dir, f_name)
             item_thumb = QTableWidgetItem()
@@ -1011,45 +1015,57 @@ class VideoToolsApp(QMainWindow):
                  item_thumb.setIcon(QIcon(pix))
             # STORE FULL PATH for fallback logic
             item_thumb.setData(Qt.ItemDataRole.UserRole, path)
-            self.clip_table.setItem(i, 0, item_thumb)
+            self.clip_table.setItem(r, 0, item_thumb)
             
-            # B. Timestamp
-            ts = t_stamps[i]
-            mins = int(ts // 60)
-            secs = int(ts % 60)
-            millis = int((ts * 1000) % 1000)
-            self.clip_table.setItem(i, 1, QTableWidgetItem(f"{mins:02d}:{secs:02d}.{millis:03d}"))
+            # --- Timestamp Fallback Logic ---
+            ts_val = t_stamps[r]
+            if ts_val < 0:
+                # If timestamp is missing (-1.0), estimate it!
+                if r == 0:
+                    ts_val = 0.0
+                else:
+                    # Use previous timestamp + 5.0 seconds
+                    prev = t_stamps[r-1]
+                    if prev < 0: prev = 0.0 # safety
+                    ts_val = prev + 5.0
+                # Update t_stamps array for future iterations
+                t_stamps[r] = ts_val
+
+            # B. Timestamp Display
+            mins = int(ts_val // 60)
+            secs = int(ts_val % 60)
+            millis = int((ts_val * 1000) % 1000)
+            self.clip_table.setItem(r, 1, QTableWidgetItem(f"{mins:02d}:{secs:02d}.{millis:03d}"))
             
-            # C. Target Duration
-            if i < len(t_stamps) - 1:
-                dur = t_stamps[i+1] - t_stamps[i]
+            # C. Target Duration Calculation
+            if r < len(files) - 1:
+                next_raw = t_stamps[r+1]
+                if next_raw < 0: 
+                    # Next one is invalid, so just assume 5.0s diff
+                    dur = 5.0
+                else:
+                    dur = max(1.0, next_raw - ts_val)
             else:
-                # Last slide logic: Default to 8s or derive from video duration if possible
-                dur = 8.0 
-                # Try to get total video duration
-                if self.video_duration > 0:
-                     rem = self.video_duration - t_stamps[i]
-                     if rem > 0: dur = rem
+                dur = 5.0 # Last slide default
             
-            # Sanity check
-            if dur < 0.1: dur = 2.0 # Fallback
+            item_dur = QTableWidgetItem(f"{dur:.1f}s")
+            item_dur.setData(Qt.ItemDataRole.UserRole, dur)
+            item_dur.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.clip_table.setItem(r, 2, item_dur)
             
-            self.clip_table.setItem(i, 2, QTableWidgetItem(f"{dur:.2f}s"))
-            self.clip_table.item(i, 2).setData(Qt.ItemDataRole.UserRole, dur) # Store float
+            # Assigned Video (col 3) - Empty initially
+            self.clip_table.setItem(r, 3, QTableWidgetItem(""))
+
+            # Source Dur (col 4)
+            item_src = QTableWidgetItem("")
+            item_src.setData(Qt.ItemDataRole.UserRole, 0.0)
+            self.clip_table.setItem(r, 4, item_src)
             
-            # D. Init Video Slots (Restore or Empty)
-            saved_vid = saved_map.get(str(i))
-            if saved_vid and os.path.exists(saved_vid):
-                 self.clip_table.set_video_for_row(i, saved_vid)
-            else:
-                self.clip_table.setItem(i, 3, QTableWidgetItem("Drop Video Here"))
-                self.clip_table.item(i, 3).setData(Qt.ItemDataRole.UserRole, None)
-                self.clip_table.setItem(i, 4, QTableWidgetItem("-"))
-            
-            # E. Action
-            btn_clear = QPushButton("X")
-            btn_clear.clicked.connect(lambda _, r=i: self.clear_row_video(r))
-            self.clip_table.setCellWidget(i, 5, btn_clear)
+            # Button (col 5)
+            btn = QPushButton("Select Video")
+            btn.clicked.connect(lambda _, row=r: self.select_video_for_row(row))
+            self.clip_table.setCellWidget(r, 5, btn)
+        self.clip_table.resizeRowsToContents()
 
         self.clip_table.resizeRowsToContents()
 
