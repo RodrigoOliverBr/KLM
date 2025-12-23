@@ -319,6 +319,9 @@ class AssemblyWorker(QThread):
                     else:
                         # No generated audio: Pass original audio through (100% vol)
                         # We just map video from 0 and audio from 1
+                        cmd_mix = [
+                            "ffmpeg", "-i", temp_assembly, "-i", original_vid,
+                            "-map", "0:v:0", "-map", "1:a:0",
                             "-c:v", "copy", "-c:a", "copy",
                             "-shortest", "-y", mix_temp
                         ]
