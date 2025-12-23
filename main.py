@@ -1096,10 +1096,16 @@ class VideoToolsApp(QMainWindow):
              cmd.extend(["-filter_complex", f"overlay={self.wm_x.text()}:{self.wm_y.text()}"])
         if self.chk_trim.isChecked():
             try:
+                # Safety Check: Ensure we have duration
+                if self.video_duration <= 0:
+                     self.get_video_duration(self.current_video_path)
+                     
                 cut_sec = float(self.trim_seconds_input.text())
-                new_dur = max(0, self.video_duration - cut_sec)
+                new_dur = max(1.0, self.video_duration - cut_sec) # Ensure at least 1s
                 cmd.extend(["-t", str(new_dur)])
-            except: return
+            except: 
+                QMessageBox.warning(self, "Trim Error", "Invalid trim duration or video length unknown.")
+                return
         cmd.extend(["-c:v", "libx264", "-c:a", "copy", output_path, "-y"])
         self.start_ffmpeg_worker(cmd, 'process', output_path)
 
@@ -1107,8 +1113,10 @@ class VideoToolsApp(QMainWindow):
         if not self.current_video_path: return
         video_dir = os.path.dirname(self.current_video_path)
         output_pattern = os.path.join(video_dir, "slide_%04d.png")
-        # Added metadata=print:file=/dev/stderr explicitly to ensure we catch it
-        cmd = ["ffmpeg", "-i", self.current_video_path, "-vf", "select='eq(n,0)+gt(scene,0.12)',metadata=print:file=/dev/stderr", "-vsync", "vfr", output_pattern, "-y"]
+        
+        # FIX: Removed :file=/dev/stderr (incompatible with Windows). 
+        # metadata=print automatically prints to stderr, which we capture.
+        cmd = ["ffmpeg", "-i", self.current_video_path, "-vf", "select='eq(n,0)+gt(scene,0.12)',metadata=print", "-vsync", "vfr", output_pattern, "-y"]
         self.start_ffmpeg_worker(cmd, 'extract', video_dir)
 
     def start_ffmpeg_worker(self, cmd, task_type, expected_output):
