@@ -124,7 +124,7 @@ class FFmpegWorker(QThread):
         self.task_type = task_type 
     def run(self):
         try:
-            process = subprocess.run(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            process = subprocess.run(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **get_subprocess_kwargs())
             if process.returncode == 0:
                 # SUCCESS: Emit stderr too because metadata=print goes there
                 self.finished.emit(True, "Operation Successful", process.stderr)
@@ -458,7 +458,7 @@ class ClipTableWidget(QTableWidget):
                     "-vframes", "1", "-vf", "scale=-1:56", 
                     "-y", temp_thumb
                 ]
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
                 
                 if os.path.exists(temp_thumb):
                     pix = QPixmap(temp_thumb) 
@@ -481,7 +481,7 @@ class ClipTableWidget(QTableWidget):
     def get_duration(self, path):
         try:
             cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True, **get_subprocess_kwargs())
             return float(res.stdout.strip())
         except: return 0.0
 
@@ -505,6 +505,32 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+def get_subprocess_kwargs():
+    """ Returns platform-specific kwargs to hide console window on Windows """
+    kwargs = {}
+    if os.name == 'nt':
+        kwargs['creationflags'] = 0x08000000 # CREATE_NO_WINDOW
+    return kwargs
+
+def open_file_native(path):
+    """ Opens a file or directory using the OS native handler """
+    if not os.path.exists(path): return
+    
+    if os.name == 'nt':
+        try:
+            os.startfile(path)
+        except Exception as e:
+            print(f"Error opening file (Win): {e}")
+    else:
+        # macOS / Linux
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(["open", path])
+            else:
+                subprocess.run(["xdg-open", path])
+        except Exception as e:
+            print(f"Error opening file (Unix): {e}")
 
 class VideoToolsApp(QMainWindow):
     def __init__(self):
@@ -1047,7 +1073,7 @@ class VideoToolsApp(QMainWindow):
 
     def check_ffmpeg(self):
         try:
-            subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
         except FileNotFoundError:
             QMessageBox.critical(self, "FFmpeg Missing", 
                 "FFmpeg is not found on this system.\n\n"
@@ -1059,7 +1085,7 @@ class VideoToolsApp(QMainWindow):
         temp_thumb = os.path.join(os.path.dirname(video_path), ".temp_thumb.jpg")
         try:
             cmd = ["ffmpeg", "-ss", "00:00:01", "-i", video_path, "-vframes", "1", "-vf", "scale=160:-1", temp_thumb, "-y"]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **get_subprocess_kwargs())
             if os.path.exists(temp_thumb):
                 pix = QPixmap(temp_thumb)
                 self.thumb_label.setPixmap(pix.scaled(80, 50, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
@@ -1075,7 +1101,7 @@ class VideoToolsApp(QMainWindow):
     def get_video_duration(self, path):
         cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path]
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True, **get_subprocess_kwargs())
             self.video_duration = float(res.stdout.strip())
         except FileNotFoundError:
             self.video_duration = 0.0
@@ -1139,9 +1165,9 @@ class VideoToolsApp(QMainWindow):
                 msg_box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
                 msg_box.exec()
                 if msg_box.clickedButton() == btn_open_video:
-                    if os.path.isfile(self.current_task_output): subprocess.run(["open", self.current_task_output]) # macOS
+                    if os.path.isfile(self.current_task_output): open_file_native(self.current_task_output)
                 elif msg_box.clickedButton() == btn_open_folder:
-                     subprocess.run(["open", os.path.dirname(self.current_task_output)])
+                     open_file_native(os.path.dirname(self.current_task_output))
                 if os.path.isfile(self.current_task_output):
                     self.set_current_video(self.current_task_output)
                     self.get_video_duration(self.current_task_output)
@@ -1184,7 +1210,7 @@ class VideoToolsApp(QMainWindow):
 
                     self.load_gallery(self.current_task_output)
                     QMessageBox.information(self, "Success", "Slides extracted with timestamps!")
-                    subprocess.run(["open", self.current_task_output])
+                    open_file_native(self.current_task_output)
         else:
             QMessageBox.critical(self, "Error", msg)
 
